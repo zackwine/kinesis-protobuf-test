@@ -18,3 +18,8 @@ https://developers.google.com/protocol-buffers/docs/downloads
 
     go get github.com/golang/protobuf
 
+
+## Generating the protobuf go code
+
+    protoc -I=. --go_out=. aggregate/aggregate.proto
+
