@@ -62,8 +62,6 @@ func (a *Aggregator) AddRecord(partitionKey string, data []byte) (entry *kinesis
 		if err != nil {
 			return entry, err
 		}
-		// Clear buffer if aggregation didn't fail
-		a.clearBuffer()
 	}
 
 	// Add new record, and update aggSize
@@ -82,6 +80,10 @@ func (a *Aggregator) AddRecord(partitionKey string, data []byte) (entry *kinesis
 // AggregateRecords will flush proto-buffered records into a put request
 func (a *Aggregator) AggregateRecords() (entry *kinesis.PutRecordsRequestEntry, err error) {
 
+	if len(a.records) == 0 {
+		return nil, nil
+	}
+
 	pkeys := a.getPartitionKeys()
 
 	logrus.Debugf("Aggregate partition keys (%d) pkeys: %v\n", len(pkeys), pkeys)
@@ -92,7 +94,7 @@ func (a *Aggregator) AggregateRecords() (entry *kinesis.PutRecordsRequestEntry, 
 
 	protoBufData, err := proto.Marshal(agg)
 	if err != nil {
-		logrus.Errorf("Failed to encode address book:", err)
+		logrus.Errorf("Failed to encode record:", err)
 		return nil, err
 	}
 
@@ -106,6 +108,9 @@ func (a *Aggregator) AggregateRecords() (entry *kinesis.PutRecordsRequestEntry, 
 	kclData = append(kclData, md5CheckSum...)
 
 	logrus.Infof("Aggregating (%d) records of size (%d) with total size (%d)\n", len(a.records), a.getSize(), len(kclData))
+
+	// Clear buffer if aggregation didn't fail
+	a.clearBuffer()
 
 	return &kinesis.PutRecordsRequestEntry{
 		Data:         kclData,
