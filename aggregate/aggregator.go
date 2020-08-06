@@ -2,6 +2,7 @@ package aggregate
 
 import (
 	"crypto/md5"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -25,7 +26,6 @@ const (
 // Aggregator kinesis aggregator
 type Aggregator struct {
 	partitionKeys    map[string]uint64
-	partitionKey     string
 	records          []*Record
 	aggSize          int // Size of both records, and partitionKeys in bytes
 	maxAggRecordSize int
@@ -46,6 +46,10 @@ func NewAggregator() *Aggregator {
 func (a *Aggregator) AddRecord(partitionKey string, data []byte) (entry *kinesis.PutRecordsRequestEntry, err error) {
 
 	partitionKeySize := len([]byte(partitionKey))
+	if partitionKeySize < 1 {
+		return nil, fmt.Errorf("Invalid partition key provided")
+	}
+
 	dataSize := len(data)
 
 	// If this is a very large record, then don't aggregate it.
@@ -88,7 +92,7 @@ func (a *Aggregator) AggregateRecords() (entry *kinesis.PutRecordsRequestEntry, 
 
 	logrus.Debugf("Aggregate partition keys (%d) pkeys: %v\n", len(pkeys), pkeys)
 	agg := &AggregatedRecord{
-		PartitionKeyTable: a.getPartitionKeys(),
+		PartitionKeyTable: pkeys,
 		Records:           a.records,
 	}
 
@@ -112,9 +116,11 @@ func (a *Aggregator) AggregateRecords() (entry *kinesis.PutRecordsRequestEntry, 
 	// Clear buffer if aggregation didn't fail
 	a.clearBuffer()
 
+	logrus.Infof("Aggregation using partition key (%s)\n", pkeys[0])
+
 	return &kinesis.PutRecordsRequestEntry{
 		Data:         kclData,
-		PartitionKey: aws.String(a.partitionKey),
+		PartitionKey: aws.String(pkeys[0]),
 	}, nil
 }
 
@@ -124,9 +130,6 @@ func (a *Aggregator) GetRecordCount() int {
 }
 
 func (a *Aggregator) addPartitionKey(partitionKey string) uint64 {
-	if a.partitionKey == "" {
-		a.partitionKey = partitionKey
-	}
 
 	if idx, ok := a.partitionKeys[partitionKey]; ok {
 		return idx
@@ -152,7 +155,6 @@ func (a *Aggregator) getSize() int {
 }
 
 func (a *Aggregator) clearBuffer() {
-	a.partitionKey = ""
 	a.partitionKeys = make(map[string]uint64, 0)
 	a.records = make([]*Record, 0)
 	a.aggSize = 0
